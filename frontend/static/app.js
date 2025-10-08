@@ -39,7 +39,8 @@ const ROLE_PERMISSIONS = {
   admin: { description: "Administrador: acceso completo a sensores y simulaciones.", buttons: true },
   operador: { description: "Operador: puede recibir y procesar eventos de sensores.", buttons: true },
   viewer: { description: "Usuario viewer: solo lectura, sin interacción.", buttons: false },
-  observador: { description: "Observador invitado: solo lectura, acceso limitado.", buttons: false }
+  invitado: { description: "Invitado: solo lectura, acceso limitado.", buttons: false },
+  observador: { description: "Observador: puede simular eventos con credenciales.", buttons: true }
 };
 
 // --- Mostrar interfaz según rol ---
@@ -64,8 +65,10 @@ function showLoggedOut() {
 
 // --- Habilitar/deshabilitar botones según rol ---
 function updateUIByRole(role) {
-  const perms = ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS['viewer'];
-  actionButtons.forEach(btn => btn.disabled = !perms.buttons);
+  // Convertimos el rol a minúsculas para evitar problemas de mayúsculas/minúsculas
+  const perms = ROLE_PERMISSIONS[role.toLowerCase()] || ROLE_PERMISSIONS['viewer'];
+  // Esta línea oculta los botones si no hay permisos. Puedes cambiar .hidden por .disabled si prefieres.
+  actionButtons.forEach(btn => btn.hidden = !perms.buttons);
   if (roleDescription) roleDescription.textContent = perms.description;
 }
 
@@ -104,7 +107,7 @@ btnLogout.addEventListener('click', () => {
   showLoggedOut();
 });
 
-// --- Modo Observador ---
+// --- Modo Invitado ---
 btnGuest.addEventListener('click', async () => {
   try {
     const resp = await fetch(TOKEN_ENDPOINT, {
@@ -112,7 +115,7 @@ btnGuest.addEventListener('click', async () => {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ guest: true })
     });
-    if (!resp.ok) throw new Error("No se pudo entrar como observador");
+    if (!resp.ok) throw new Error("No se pudo entrar como invitado");
     const data = await resp.json();
     saveToken(data.access_token, data.user);
     showLoggedIn();
@@ -129,3 +132,4 @@ document.addEventListener('DOMContentLoaded', () => {
   if (token && user.username) showLoggedIn();
   else showLoggedOut();
 });
+

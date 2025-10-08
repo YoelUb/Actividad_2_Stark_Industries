@@ -92,14 +92,12 @@ async def login(request: Request, session: Session = Depends(get_session)):
     guest = data.get("guest", False)
 
     if guest:
-        # Observador invitado
-        stmt = select(Empleado).where(Empleado.correo == "observador@stark.com")
-        user = session.exec(stmt).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="Usuario observador no encontrado")
-        token_data = {"sub": user.correo, "nombre": user.nombre, "rol": "observador"}
+        # Invitado genérico
+        nombre_invitado = "Invitado"
+        rol_invitado = "invitado"
+        token_data = {"sub": "guest@stark.com", "nombre": nombre_invitado, "rol": rol_invitado}
         token = create_access_token(token_data)
-        return {"access_token": token, "token_type": "bearer", "user": {"username": user.nombre, "rol": "observador"}}
+        return {"access_token": token, "token_type": "bearer", "user": {"username": nombre_invitado, "rol": rol_invitado}}
 
     # Login normal
     username = data.get("username")
@@ -128,7 +126,8 @@ async def login(request: Request, session: Session = Depends(get_session)):
 @app.get("/me")
 def read_current_user(token: str = Depends(oauth2_scheme)):
     if not token:
-        return {"username": "Observador", "rol": "observador"}
+        # Este caso es poco probable con OAuth2, pero es una salvaguarda.
+        return {"username": "Invitado", "rol": "invitado"}
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("nombre")
