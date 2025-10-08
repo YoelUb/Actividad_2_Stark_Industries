@@ -1,8 +1,7 @@
-// app.js (Login + Roles + Invitado)
 const API_BASE = window.location.origin;
 const TOKEN_ENDPOINT = `${API_BASE}/token`;
 
-// --- Manejo de token en localStorage ---
+// --- Manejo token ---
 function saveToken(token, user) {
   localStorage.setItem('stark_token', token);
   localStorage.setItem('stark_user', JSON.stringify(user || {}));
@@ -18,26 +17,32 @@ function clearToken() {
 }
 
 function getUser() {
-  try { return JSON.parse(localStorage.getItem('stark_user') || '{}'); }
-  catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem('stark_user') || '{}');
+  } catch {
+    return {};
+  }
 }
 
-// --- Elementos del DOM ---
+// --- Elementos DOM ---
 const loginForm = document.getElementById('loginForm');
 const btnLogout = document.getElementById('btnLogout');
 const btnGuest = document.getElementById('btnGuest');
 const loginSection = document.getElementById('loginSection');
 const dashboard = document.getElementById('dashboard');
 const usernameLabel = document.getElementById('usernameLabel');
+const roleDescription = document.getElementById('roleDescription') || null;
+const actionButtons = document.querySelectorAll('#dashboard button[data-sensor]');
 
-// Botones que dependen del rol
-const btnViewer = document.getElementById('btnViewer');  // modo viewer (si existe)
-const btnAdmin = document.getElementById('btnAdmin');    // ejemplo para admin
+// --- Definición permisos ---
+const ROLE_PERMISSIONS = {
+  admin: { description: "Administrador: acceso completo a sensores y simulaciones.", buttons: true },
+  operador: { description: "Operador: puede recibir y procesar eventos de sensores.", buttons: true },
+  viewer: { description: "Usuario viewer: solo lectura, sin interacción.", buttons: false },
+  observador: { description: "Observador invitado: solo lectura, acceso limitado.", buttons: false }
+};
 
-// Botones de acción del dashboard (sensor, simulación)
-const actionButtons = document.querySelectorAll('#dashboard button');
-
-// --- Mostrar interfaz según login ---
+// --- Mostrar interfaz según rol ---
 function showLoggedIn() {
   loginSection.hidden = true;
   dashboard.hidden = false;
@@ -45,9 +50,7 @@ function showLoggedIn() {
 
   const user = getUser();
   usernameLabel.textContent = user.username || 'Usuario';
-
-  // Bloquear o habilitar botones según rol
-  updateUIByRole(user.rol);
+  updateUIByRole(user.rol || 'viewer');
 }
 
 function showLoggedOut() {
@@ -55,31 +58,20 @@ function showLoggedOut() {
   dashboard.hidden = true;
   btnLogout.hidden = true;
   usernameLabel.textContent = '';
-
-  // Deshabilitar botones de acción
+  if (roleDescription) roleDescription.textContent = '';
   actionButtons.forEach(btn => btn.disabled = true);
-  if (btnViewer) btnViewer.disabled = true;
-  if (btnAdmin) btnAdmin.disabled = true;
 }
 
-// --- Habilitar/Deshabilitar botones según rol ---
+// --- Habilitar/deshabilitar botones según rol ---
 function updateUIByRole(role) {
-  if (!role) return;
-
-  actionButtons.forEach(btn => {
-    // Solo viewer ve los datos pero no puede tocar nada
-    if (role === "viewer") btn.disabled = true;
-    else btn.disabled = false;
-  });
-
-  if (btnViewer) btnViewer.disabled = role !== "viewer";
-  if (btnAdmin) btnAdmin.disabled = role !== "admin";
+  const perms = ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS['viewer'];
+  actionButtons.forEach(btn => btn.disabled = !perms.buttons);
+  if (roleDescription) roleDescription.textContent = perms.description;
 }
 
 // --- Login ---
 loginForm.addEventListener('submit', async (ev) => {
   ev.preventDefault();
-
   const username = document.getElementById('username').value.trim();
   const password = document.getElementById('password').value.trim();
 
@@ -91,16 +83,17 @@ loginForm.addEventListener('submit', async (ev) => {
     });
 
     if (!resp.ok) {
-      const text = await resp.text();
-      throw new Error(text || `Error ${resp.status}`);
+      const msg = await resp.json().catch(() => null);
+      const friendly = msg?.detail || "Usuario o contraseña incorrectos. Por favor verifica.";
+      throw new Error(friendly);
     }
 
     const data = await resp.json();
-    saveToken(data.access_token, data.user || { username });
+    saveToken(data.access_token, data.user);
     showLoggedIn();
-    console.log("Login exitoso:", data);
+
   } catch (err) {
-    alert("Login fallido: " + err.message);
+    alert(err.message);
     console.error(err);
   }
 });
@@ -111,21 +104,28 @@ btnLogout.addEventListener('click', () => {
   showLoggedOut();
 });
 
-// --- Modo Observador sin login ---
-btnGuest.addEventListener('click', () => {
-  clearToken(); // Limpiamos cualquier token
-  saveToken(null, { username: 'Observador', rol: 'viewer' });
-  showLoggedIn();
+// --- Modo Observador ---
+btnGuest.addEventListener('click', async () => {
+  try {
+    const resp = await fetch(TOKEN_ENDPOINT, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ guest: true })
+    });
+    if (!resp.ok) throw new Error("No se pudo entrar como observador");
+    const data = await resp.json();
+    saveToken(data.access_token, data.user);
+    showLoggedIn();
+  } catch (err) {
+    alert(err.message);
+    console.error(err);
+  }
 });
 
-// --- Verificar token al cargar página ---
+// --- Revisar token al cargar ---
 document.addEventListener('DOMContentLoaded', () => {
   const token = getToken();
   const user = getUser();
-
-  if (token && user.username) {
-    showLoggedIn();
-  } else {
-    showLoggedOut();
-  }
+  if (token && user.username) showLoggedIn();
+  else showLoggedOut();
 });
