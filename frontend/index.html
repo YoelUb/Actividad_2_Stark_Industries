@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Stark Security Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Stark Industries — Security Dashboard</h1>
+    <div id="userArea">
+      <span id="usernameLabel"></span>
+      <button id="btnLogout" class="btn secondary" hidden>Salir</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="loginSection" class="card">
+      <h2>Acceso</h2>
+      <form id="loginForm">
+        <label>
+          Usuario
+          <input id="username" type="text" required />
+        </label>
+        <label>
+          Contraseña
+          <input id="password" type="password" required />
+        </label>
+        <div class="row">
+          <button type="submit" class="btn">Entrar</button>
+          <button type="button" id="btnGuest" class="btn secondary">Entrar como Observador</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="dashboard" hidden>
+      <div class="grid">
+        <div class="card sensor-card" id="motionCard">
+          <h3>Movimiento</h3>
+          <p class="sensor-value" id="motionValue">—</p>
+          <p class="sensor-meta" id="motionMeta">Último evento: —</p>
+          <button class="btn" data-sensor="motion" id="btnSimMotion">Simular movimiento</button>
+        </div>
+
+        <div class="card sensor-card" id="tempCard">
+          <h3>Temperatura</h3>
+          <p class="sensor-value" id="tempValue">— °C</p>
+          <p class="sensor-meta" id="tempMeta">Último evento: —</p>
+          <button class="btn" data-sensor="temperature" id="btnSimTemp">Simular temperatura</button>
+        </div>
+
+        <div class="card sensor-card" id="accessCard">
+          <h3>Acceso</h3>
+          <p class="sensor-value" id="accessValue">—</p>
+          <p class="sensor-meta" id="accessMeta">Último evento: —</p>
+          <button class="btn" data-sensor="access" id="btnSimAccess">Simular acceso</button>
+        </div>
+
+        <div class="card metrics-card" id="metricsCard">
+          <h3>Métricas</h3>
+          <p>Eventos procesados: <span id="metricEvents">—</span></p>
+          <p>Latencia (avg): <span id="metricLatency">—</span> ms</p>
+          <button class="btn" id="btnRefreshMetrics">Actualizar métricas</button>
+        </div>
+      </div>
+
+      <div class="card alerts-card">
+        <h3>Alertas en tiempo real</h3>
+        <ul id="alertsList" class="alerts-list"></ul>
+      </div>
+
+      <div class="card simulator">
+        <h3>Simulador manual de eventos</h3>
+        <form id="simulateForm" class="form-inline">
+          <select id="simSensor">
+            <option value="motion">Motion</option>
+            <option value="temperature">Temperature</option>
+            <option value="access">Access</option>
+          </select>
+          <input id="simPayload" placeholder='Payload JSON, ej: {"value": 42}' />
+          <button class="btn" type="submit">Enviar</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <small>Stark Industries -----> Realizada por Yoel Urquijo Barroso.</small>
+  </footer>
+
+  <script src="/static/app.js" type="module"></script>
+</body>
+</html>
