@@ -13,52 +13,36 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
-from sqlmodel import Session, create_engine, select
+from sqlmodel import SQLModel, Session, create_engine, select  # Asegúrate que SQLModel está importado
 import jwt
 from dotenv import load_dotenv
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
 
-from db.models import Empleado, Rol, EmpleadoRol
+from db.models import Empleado, Rol, EmpleadoRol, Incidencia  # <<-- 1. IMPORTA EL NUEVO MODELO
 from websockets_manager import manager
 from model.SENSOR_REGISTRY import sensor_registry
 
-# --------------------------
-# 1. CONFIGURACIÓN DE LOGGING
-# --------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-)
+# --- Configuración de Logging y Métricas (sin cambios) ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+EVENTS_PROCESSED = Counter('events_processed_total', 'Total de eventos de sensor procesados', ['sensor_type', 'status'])
+EVENT_LATENCY = Histogram('event_processing_latency_seconds', 'Latencia del procesamiento de eventos de sensor',
+                          ['sensor_type'])
 
-# --------------------------
-# 2. CONFIGURACIÓN DE MÉTRICAS PROMETHEUS
-# --------------------------
-EVENTS_PROCESSED = Counter(
-    'events_processed_total',
-    'Total de eventos de sensor procesados',
-    ['sensor_type', 'status']
-)
-EVENT_LATENCY = Histogram(
-    'event_processing_latency_seconds',
-    'Latencia del procesamiento de eventos de sensor',
-    ['sensor_type']
-)
-
-# --------------------------
-# 3. CONFIGURACIÓN DEL EJECUTOR DE HILOS
-# --------------------------
-# Creamos un pool de hilos para ejecutar tareas síncronas bloqueantes
+# --- Pool de Hilos (sin cambios) ---
 thread_pool = ThreadPoolExecutor(max_workers=4)
 
-# --- Carga de variables de entorno y configuración de BD (sin cambios) ---
+# --- Carga de variables de entorno y configuración de BD ---
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("No se encontró DATABASE_URL en .env")
+if not DATABASE_URL: raise RuntimeError("No se encontró DATABASE_URL en .env")
 
 engine = create_engine(DATABASE_URL, echo=False)
+
+
+def create_db_and_tables():
+    """Función para crear las tablas en la base de datos si no existen."""
+    SQLModel.metadata.create_all(engine)
 
 
 def get_session():
@@ -85,37 +69,32 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("nombre")
         rol: str = payload.get("rol")
-        if username is None or rol is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
+        if username is None or rol is None: raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                                                detail="Token inválido")
         return {"username": username, "rol": rol}
     except jwt.PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
 
 
-def hash_password(plain_password: str) -> str:
-    return hashlib.sha256(plain_password.encode('utf-8')).hexdigest()
+def hash_password(plain_password: str): return hashlib.sha256(plain_password.encode('utf-8')).hexdigest()
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return hash_password(plain_password) == hashed_password
+def verify_password(plain_password: str, hashed_password: str): return hash_password(plain_password) == hashed_password
 
 
-# --------------------------
-# 4. FUNCIONES DE NOTIFICACIÓN ACTUALIZADAS
-# --------------------------
+# --- Funciones de Notificación (ACTUALIZADAS) ---
 def get_admin_emails(session: Session) -> list[str]:
-    admin_users = session.exec(select(Empleado.correo).join(EmpleadoRol).join(Rol).where(Rol.nombre == "admin")).all()
-    # Añadimos el correo estático a la lista de destinatarios
-    all_recipients = admin_users + ["uaxconcurrente@gmail.com"]
+    admin_users_query = session.exec(
+        select(Empleado.correo).join(EmpleadoRol).join(Rol).where(Rol.nombre == "admin")).all()
+    # <<-- AÑADE EL NUEVO CORREO A LA LISTA -->>
+    all_recipients = admin_users_query + ["uaxconcurrente@gmail.com"]
     return list(set(all_recipients))  # Usamos set para evitar duplicados
 
 
 async def send_email_to_admins_async(message: str, session: Session):
     admin_emails = get_admin_emails(session)
-    if not admin_emails:
-        logging.warning("ALERTA CRÍTICA, pero no se encontraron administradores para notificar.")
-        return
-
+    if not admin_emails: logging.warning(
+        "ALERTA CRÍTICA, pero no se encontraron administradores para notificar."); return
     logging.info(f"Iniciando envío de email de alerta a: {', '.join(admin_emails)}")
     await asyncio.sleep(1)
     logging.info(f"Email enviado a administradores con el mensaje: '{message}'")
@@ -128,12 +107,8 @@ async def send_push_notification_async(message: str):
 
 
 def send_sms_sync(message: str):
-    """
-    Esta es una función SÍNCRONA y BLOQUEANTE.
-    Simula una operación que tarda mucho, como conectar a un módem GSM.
-    """
     logging.info(f"Iniciando envío de SMS síncrono (bloqueante)...")
-    time.sleep(2)  # Usamos time.sleep() para simular un bloqueo real
+    time.sleep(2)
     logging.info(f"SMS síncrono enviado con mensaje: '{message}'")
     return "SMS Entregado"
 
@@ -144,11 +119,16 @@ def send_sms_sync(message: str):
 app = FastAPI(title="Stark Industries API", version="1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"],
                    allow_headers=["*"])
-
-# 5. EXPONER MÉTRICAS DE PROMETHEUS
 Instrumentator().instrument(app).expose(app)
 
-# --- Endpoints de Frontend, Autenticación y WebSocket (sin cambios en su lógica principal) ---
+
+# <<-- 2. LLAMADA A LA FUNCIÓN DE CREACIÓN DE TABLAS AL INICIAR -->>
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
+
+
+# (El resto de endpoints de Frontend, Autenticación y WebSocket se mantienen igual...)
 frontend_dir = Path(__file__).parent.parent / "frontend"
 app.mount("/static", StaticFiles(directory=frontend_dir / "static"), name="static")
 
@@ -161,8 +141,8 @@ def serve_index(): return FileResponse(frontend_dir / "index.html")
 async def login(request: Request, session: Session = Depends(get_session)):
     data = await request.json()
     if data.get("guest", False):
-        user_info = {"username": "Invitado", "rol": "invitado"}
-        token_data = {"sub": "guest@stark.com", "nombre": user_info["username"], "rol": user_info["rol"]}
+        user_info, token_data = {"username": "Invitado", "rol": "invitado"}, {"sub": "guest@stark.com",
+                                                                              "nombre": "Invitado", "rol": "invitado"}
     else:
         username, password = data.get("username"), data.get("password")
         if not username or not password: raise HTTPException(status_code=400, detail="Usuario y contraseña requeridos")
@@ -171,8 +151,8 @@ async def login(request: Request, session: Session = Depends(get_session)):
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario o contraseña incorrectos")
         roles = session.exec(select(Rol.nombre).join(EmpleadoRol).where(EmpleadoRol.empleado_id == user.id)).all()
         rol_real = roles[0] if roles else "viewer"
-        user_info = {"username": user.nombre, "rol": rol_real}
-        token_data = {"sub": user.correo, "nombre": user.nombre, "rol": rol_real}
+        user_info, token_data = {"username": user.nombre, "rol": rol_real}, {"sub": user.correo, "nombre": user.nombre,
+                                                                             "rol": rol_real}
     token = create_access_token(token_data)
     return {"access_token": token, "token_type": "bearer", "user": user_info}
 
@@ -191,47 +171,49 @@ async def websocket_endpoint(websocket: WebSocket):
         logging.info("Cliente desconectado del WebSocket.")
 
 
-# --------------------------
-# 6. ENDPOINTS Y LÓGICA DE PROCESAMIENTO ACTUALIZADOS
-# --------------------------
+# <<-- 3. LÓGICA DE PROCESAMIENTO ACTUALIZADA -->>
 @app.post("/api/v1/simulate/{sensor_type}")
 async def simulate_event(sensor_type: str, request: Request, current_user: dict = Depends(get_current_user),
                          db_session: Session = Depends(get_session)):
     if current_user["rol"] not in ["admin", "observador"]:
         raise HTTPException(status_code=403, detail="No tienes permiso para realizar esta acción")
-
     data = await request.json()
     sensor = sensor_registry.get_sensor(sensor_type)
     if not sensor: raise HTTPException(status_code=404, detail="Tipo de sensor no encontrado")
-
     asyncio.create_task(process_and_notify(sensor, data, db_session, sensor_type))
     return {"message": f"Simulación del sensor '{sensor_type}' iniciada."}
 
 
 async def process_and_notify(sensor, data: dict, session: Session, sensor_type: str):
     start_time = time.time()
-
     result = sensor.process_event(data)
-    result_with_timestamp = {**result, "timestamp": datetime.now().strftime("%H:%M:%S")}
 
+    # Notificar siempre por WebSocket para que el admin lo vea en su div
+    result_with_timestamp = {**result, "timestamp": datetime.now().strftime("%H:%M:%S")}
     await manager.broadcast(json.dumps(result_with_timestamp))
 
+    # Solo si es una alerta (warning o critical), la guardamos en la BBDD
+    if result["status"] in ["critical", "warning"]:
+        incidencia = Incidencia(
+            sensor_type=sensor_type,
+            status=result["status"],
+            message=result["message"]
+        )
+        session.add(incidencia)
+        session.commit()
+        logging.info(f"Incidencia guardada en la base de datos: {incidencia.message}")
+
+    # Si es una alerta CRÍTICA, realizar acciones adicionales (email, push, sms)
     if result["status"] == "critical":
         loop = asyncio.get_running_loop()
+        sms_task = loop.run_in_executor(thread_pool, send_sms_sync, result["message"])
 
-        # Ejecutamos la tarea SÍNCRONA en un hilo separado para no bloquear la app
-        sms_task = loop.run_in_executor(
-            thread_pool, send_sms_sync, result["message"]
-        )
-
-        # Ejecutamos las tareas asíncronas de forma normal
         await asyncio.gather(
             send_email_to_admins_async(result["message"], session),
             send_push_notification_async(result["message"]),
-            sms_task  # Esperamos a que el SMS también termine
+            sms_task
         )
 
-    # Registramos la métrica de latencia y contamos el evento
     latency = time.time() - start_time
     EVENT_LATENCY.labels(sensor_type=sensor_type).observe(latency)
     EVENTS_PROCESSED.labels(sensor_type=sensor_type, status=result["status"]).inc()

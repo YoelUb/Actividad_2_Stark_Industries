@@ -2,6 +2,7 @@ from typing import Optional
 from sqlmodel import SQLModel, Field, Relationship
 from datetime import datetime
 
+
 class Rol(SQLModel, table=True):
     __tablename__ = "roles"
 
@@ -33,3 +34,15 @@ class EmpleadoRol(SQLModel, table=True):
 
     empleado: Empleado = Relationship(back_populates="roles")
     rol: Rol = Relationship(back_populates="empleados")
+
+
+
+
+class Incidencia(SQLModel, table=True):
+    __tablename__ = "incidencias"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    sensor_type: str
+    status: str
+    message: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)

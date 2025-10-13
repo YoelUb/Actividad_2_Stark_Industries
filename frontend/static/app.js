@@ -68,7 +68,7 @@ function showLoggedOut() {
   btnLogout.hidden = true;
   usernameLabel.textContent = '';
   actionButtons.forEach(btn => btn.disabled = true);
-  if (alertsCard) alertsCard.style.display = 'none'; // Usamos style.display
+  if (alertsCard) alertsCard.style.display = 'none';
   disconnectWebSocket();
   if (alertsList) alertsList.innerHTML = '';
 }
@@ -78,9 +78,6 @@ function updateUIByRole(role) {
 
   actionButtons.forEach(btn => btn.hidden = !perms.buttons);
 
-  // =============================================================
-  // ESTA ES LA ÚNICA LÍNEA QUE HA CAMBIADO Y QUE LO ARREGLA TODO
-  // =============================================================
   if (alertsCard) {
     alertsCard.style.display = perms.show_alerts ? 'flex' : 'none';
   }
