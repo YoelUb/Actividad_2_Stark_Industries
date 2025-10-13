@@ -13,23 +13,23 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
-from sqlmodel import SQLModel, Session, create_engine, select  # Asegúrate que SQLModel está importado
+from sqlmodel import SQLModel, Session, create_engine, select
 import jwt
 from dotenv import load_dotenv
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
 
-from db.models import Empleado, Rol, EmpleadoRol, Incidencia  # <<-- 1. IMPORTA EL NUEVO MODELO
+from db.models import Empleado, Rol, EmpleadoRol, Incidencia
 from websockets_manager import manager
 from model.SENSOR_REGISTRY import sensor_registry
 
-# --- Configuración de Logging y Métricas (sin cambios) ---
+# --- Configuración de Logging y Métricas ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 EVENTS_PROCESSED = Counter('events_processed_total', 'Total de eventos de sensor procesados', ['sensor_type', 'status'])
 EVENT_LATENCY = Histogram('event_processing_latency_seconds', 'Latencia del procesamiento de eventos de sensor',
                           ['sensor_type'])
 
-# --- Pool de Hilos (sin cambios) ---
+# --- Pool de Hilos ---
 thread_pool = ThreadPoolExecutor(max_workers=4)
 
 # --- Carga de variables de entorno y configuración de BD ---
@@ -50,7 +50,7 @@ def get_session():
         yield session
 
 
-# --- Configuración de JWT y Seguridad (sin cambios) ---
+# --- Configuración de JWT y Seguridad ---
 SECRET_KEY = os.getenv("JWT_SECRET", "mi_super_secreto")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
@@ -82,13 +82,12 @@ def hash_password(plain_password: str): return hashlib.sha256(plain_password.enc
 def verify_password(plain_password: str, hashed_password: str): return hash_password(plain_password) == hashed_password
 
 
-# --- Funciones de Notificación (ACTUALIZADAS) ---
+# --- Funciones de Notificación ---
 def get_admin_emails(session: Session) -> list[str]:
     admin_users_query = session.exec(
         select(Empleado.correo).join(EmpleadoRol).join(Rol).where(Rol.nombre == "admin")).all()
-    # <<-- AÑADE EL NUEVO CORREO A LA LISTA -->>
     all_recipients = admin_users_query + ["uaxconcurrente@gmail.com"]
-    return list(set(all_recipients))  # Usamos set para evitar duplicados
+    return list(set(all_recipients))
 
 
 async def send_email_to_admins_async(message: str, session: Session):
@@ -122,13 +121,12 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 Instrumentator().instrument(app).expose(app)
 
 
-# <<-- 2. LLAMADA A LA FUNCIÓN DE CREACIÓN DE TABLAS AL INICIAR -->>
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()
 
 
-# (El resto de endpoints de Frontend, Autenticación y WebSocket se mantienen igual...)
+# --- Endpoints de Frontend, Autenticación y WebSocket ---
 frontend_dir = Path(__file__).parent.parent / "frontend"
 app.mount("/static", StaticFiles(directory=frontend_dir / "static"), name="static")
 
@@ -171,7 +169,7 @@ async def websocket_endpoint(websocket: WebSocket):
         logging.info("Cliente desconectado del WebSocket.")
 
 
-# <<-- 3. LÓGICA DE PROCESAMIENTO ACTUALIZADA -->>
+# --- Lógica de Simulación y Notificación ---
 @app.post("/api/v1/simulate/{sensor_type}")
 async def simulate_event(sensor_type: str, request: Request, current_user: dict = Depends(get_current_user),
                          db_session: Session = Depends(get_session)):
@@ -188,8 +186,8 @@ async def process_and_notify(sensor, data: dict, session: Session, sensor_type: 
     start_time = time.time()
     result = sensor.process_event(data)
 
-    # Notificar siempre por WebSocket para que el admin lo vea en su div
-    result_with_timestamp = {**result, "timestamp": datetime.now().strftime("%H:%M:%S")}
+    # <<-- MODIFICACIÓN AQUÍ: Añadimos 'sensor_type' al mensaje del WebSocket -->>
+    result_with_timestamp = {**result, "timestamp": datetime.now().strftime("%H:%M:%S"), "sensor_type": sensor_type}
     await manager.broadcast(json.dumps(result_with_timestamp))
 
     # Solo si es una alerta (warning o critical), la guardamos en la BBDD
@@ -218,3 +216,20 @@ async def process_and_notify(sensor, data: dict, session: Session, sensor_type: 
     EVENT_LATENCY.labels(sensor_type=sensor_type).observe(latency)
     EVENTS_PROCESSED.labels(sensor_type=sensor_type, status=result["status"]).inc()
     logging.info(f"Evento procesado para sensor '{sensor_type}' con estado '{result['status']}' en {latency:.4f}s")
+
+
+@app.get("/api/v1/incidencias")
+def get_incidencias(current_user: dict = Depends(get_current_user), db_session: Session = Depends(get_session)):
+    """
+    Endpoint para obtener las últimas 20 incidencias.
+    Solo accesible para roles que pueden ver alertas.
+    """
+    if current_user["rol"] not in ["admin", "observador"]:
+        raise HTTPException(status_code=403, detail="No tienes permiso para ver las incidencias")
+
+    # Consulta para obtener las últimas 20 incidencias, ordenadas por la más reciente primero
+    incidencias = db_session.exec(
+        select(Incidencia).order_by(Incidencia.timestamp.desc()).limit(20)
+    ).all()
+
+    return incidencias

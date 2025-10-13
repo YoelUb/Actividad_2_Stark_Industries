@@ -2,6 +2,7 @@ const API_BASE = window.location.origin;
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
 const TOKEN_ENDPOINT = `${API_BASE}/token`;
 const SIMULATE_ENDPOINT = `${API_BASE}/api/v1/simulate`;
+const INCIDENTS_ENDPOINT = `${API_BASE}/api/v1/incidencias`;
 
 let socket = null;
 
@@ -49,7 +50,7 @@ const ROLE_PERMISSIONS = {
   operador: { description: "Operador: puede procesar eventos.", buttons: true, show_alerts: false },
   viewer: { description: "Usuario viewer: solo lectura.", buttons: false, show_alerts: false },
   invitado: { description: "Invitado: solo lectura.", buttons: false, show_alerts: false },
-  observador: { description: "Observador: puede simular eventos.", buttons: true, show_alerts: false }
+  observador: { description: "Observador: puede simular eventos.", buttons: true, show_alerts: true }
 };
 
 function showLoggedIn() {
@@ -60,6 +61,7 @@ function showLoggedIn() {
   usernameLabel.textContent = user.username || 'Usuario';
   updateUIByRole(user.rol || 'viewer');
   connectWebSocket();
+  loadInitialAlerts();
 }
 
 function showLoggedOut() {
@@ -111,7 +113,8 @@ btnLogout.addEventListener('click', () => {
 });
 
 btnGuest.addEventListener('click', () => {
-    saveToken('guest-token', { username: 'Invitado', rol: 'invitado' });
+    // Se asigna el rol 'observador' para que tenga los permisos correctos
+    saveToken('guest-token', { username: 'Observador', rol: 'observador' });
     showLoggedIn();
 });
 
@@ -127,7 +130,7 @@ async function simulate(sensorType, payload) {
             const err = await resp.json();
             throw new Error(err.detail || 'Error en la simulación');
         }
-        console.log(`Simulación de ${sensorType} enviada correctamente.`);
+        alert(`Simulación de ${sensorType} enviada correctamente.`);
     } catch (err) {
         alert(err.message);
     }
@@ -135,14 +138,68 @@ async function simulate(sensorType, payload) {
 
 function addAlert(alertData) {
     if (!alertsList) return;
+
+    const displayTimestamp = alertData.timestamp.includes("T")
+      ? new Date(alertData.timestamp).toLocaleTimeString()
+      : alertData.timestamp;
+
     const item = document.createElement('li');
     item.className = `alert-item ${alertData.status}`;
-    item.innerHTML = `<span>${alertData.message}</span><small>${alertData.timestamp}</small>`;
+    item.innerHTML = `<span>${alertData.message}</span><small>${displayTimestamp}</small>`;
     alertsList.prepend(item);
     if (alertsList.children.length > 20) {
         alertsList.removeChild(alertsList.lastChild);
     }
+
+    updateSensorCard(alertData, displayTimestamp);
 }
+
+function updateSensorCard(data, timestamp) {
+    let valueEl, metaEl;
+    switch(data.sensor_type) {
+        case 'motion':
+            valueEl = document.getElementById('motionValue');
+            metaEl = document.getElementById('motionMeta');
+            valueEl.textContent = data.status === 'critical' ? 'NO AUTORIZADO' : 'OK';
+            break;
+        case 'temperature':
+            valueEl = document.getElementById('tempValue');
+            metaEl = document.getElementById('tempMeta');
+            const tempMatch = data.message.match(/(\d+)°C/);
+            if (tempMatch) valueEl.textContent = `${tempMatch[1]} °C`;
+            break;
+        case 'access':
+            valueEl = document.getElementById('accessValue');
+            metaEl = document.getElementById('accessMeta');
+            valueEl.textContent = data.status === 'critical' ? 'DENEGADO' : 'CONCEDIDO';
+            break;
+        default:
+            return;
+    }
+    metaEl.textContent = `Último evento: ${timestamp}`;
+}
+
+async function loadInitialAlerts() {
+    const token = getToken();
+    const user = getUser();
+    const perms = ROLE_PERMISSIONS[user.rol.toLowerCase()] || ROLE_PERMISSIONS['viewer'];
+
+    if (!perms.show_alerts) return;
+
+    try {
+        const resp = await fetch(INCIDENTS_ENDPOINT, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!resp.ok) return;
+
+        const incidents = await resp.json();
+        alertsList.innerHTML = '';
+        incidents.forEach(addAlert);
+    } catch (err) {
+        console.error("Error al cargar incidencias iniciales:", err);
+    }
+}
+
 
 document.getElementById('btnSimMotion').addEventListener('click', () => simulate('motion', { is_authorized: false, zone: 'Laboratorio 3' }));
 document.getElementById('btnSimTemp').addEventListener('click', () => simulate('temperature', { temperature: Math.floor(Math.random() * 31) + 30 }));
