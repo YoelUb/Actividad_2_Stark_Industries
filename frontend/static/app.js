@@ -1,5 +1,5 @@
 // <<-- LOG PARA VERIFICAR LA CARGA DEL ARCHIVO -->>
-console.log("--- STARK INDUSTRIES APP.JS v5.0 (DIAGNÓSTICO) --- CARGADO CORRECTAMENTE ---");
+console.log("--- STARK INDUSTRIES APP.JS v5.2 (RACE CONDITION FIX) --- CARGADO CORRECTAMENTE ---");
 
 const API_BASE = window.location.origin;
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
@@ -8,24 +8,53 @@ const SIMULATE_ENDPOINT = `${API_BASE}/api/v1/simulate`;
 const INCIDENTS_ENDPOINT = `${API_BASE}/api/v1/incidencias`;
 
 let socket = null;
+let reconnectTimer = null;
 
 function connectWebSocket() {
   const token = getToken();
   if (!token || socket) return;
 
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
   socket = new WebSocket(`${WS_BASE}/ws`);
-  socket.onopen = () => console.log("WebSocket conectado.");
+  socket.onopen = () => {
+      console.log("WebSocket conectado.");
+      // <<-- SOLUCIÓN: Habilita los botones solo cuando la conexión está abierta -->>
+      updateUIByRole(getUser().rol || 'viewer', true);
+  };
   socket.onmessage = (event) => {
       const alertData = JSON.parse(event.data);
       updateSensorCard(alertData);
       addAlertToList(alertData);
   };
-  socket.onclose = () => { console.log("WebSocket desconectado."); socket = null; };
-  socket.onerror = (error) => { console.error("Error en WebSocket:", error); socket = null; };
+  socket.onclose = () => {
+      console.log("WebSocket desconectado. Intentando reconectar en 3 segundos...");
+      socket = null;
+      // <<-- SOLUCIÓN: Deshabilita los botones si la conexión se pierde -->>
+      updateUIByRole(getUser().rol || 'viewer', false);
+      if (getToken()) {
+          reconnectTimer = setTimeout(connectWebSocket, 3000);
+      }
+  };
+  socket.onerror = (error) => {
+      console.error("Error en WebSocket:", error);
+      socket.close();
+  };
 }
 
 function disconnectWebSocket() {
-    if (socket) socket.close();
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+    if (socket) {
+        socket.onclose = null;
+        socket.close();
+        socket = null;
+    }
 }
 
 function saveToken(token, user) {
@@ -66,7 +95,8 @@ function showLoggedIn() {
   btnLogout.hidden = false;
   const user = getUser();
   usernameLabel.textContent = user.username || 'Usuario';
-  updateUIByRole(user.rol || 'viewer');
+  // <<-- SOLUCIÓN: Muestra los botones correctos, pero inicialmente deshabilitados -->>
+  updateUIByRole(user.rol || 'viewer', false);
   connectWebSocket();
   loadInitialAlerts();
 }
@@ -76,15 +106,24 @@ function showLoggedOut() {
   dashboard.hidden = true;
   btnLogout.hidden = true;
   usernameLabel.textContent = '';
-  actionButtons.forEach(btn => btn.disabled = true);
+  // Llama a updateUIByRole para deshabilitar y ocultar botones al cerrar sesión
+  updateUIByRole('invitado', false);
   if (alertsCard) alertsCard.style.display = 'none';
   disconnectWebSocket();
   if (alertsList) alertsList.innerHTML = '';
 }
 
-function updateUIByRole(role) {
+// <<-- FUNCIÓN MODIFICADA para controlar el estado 'disabled' de los botones -->>
+function updateUIByRole(role, isConnected) {
   const perms = ROLE_PERMISSIONS[role.toLowerCase()] || ROLE_PERMISSIONS['viewer'];
-  actionButtons.forEach(btn => btn.hidden = !perms.buttons);
+  actionButtons.forEach(btn => {
+    // Muestra u oculta el botón según el permiso
+    btn.hidden = !perms.buttons;
+    // Deshabilita el botón si no está oculto Y la conexión no está activa
+    if (!btn.hidden) {
+      btn.disabled = !isConnected;
+    }
+  });
   if (alertsCard) {
     alertsCard.style.display = perms.show_alerts ? 'flex' : 'none';
   }
@@ -227,7 +266,7 @@ async function loadInitialAlerts() {
     }
 }
 
-// <<-- PRUEBA DE DIAGNÓSTICO AQUÍ -->>
+
 document.getElementById('btnSimMotion').addEventListener('click', () => {
     console.log("Botón 'Simular movimiento' pulsado.");
     simulate('motion', { is_authorized: false, zone: 'Laboratorio 3' });
