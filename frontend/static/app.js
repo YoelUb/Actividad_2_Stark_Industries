@@ -1,3 +1,6 @@
+// <<-- LOG PARA VERIFICAR LA CARGA DEL ARCHIVO -->>
+console.log("--- STARK INDUSTRIES APP.JS v5.0 (DIAGNÓSTICO) --- CARGADO CORRECTAMENTE ---");
+
 const API_BASE = window.location.origin;
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
 const TOKEN_ENDPOINT = `${API_BASE}/token`;
@@ -12,7 +15,11 @@ function connectWebSocket() {
 
   socket = new WebSocket(`${WS_BASE}/ws`);
   socket.onopen = () => console.log("WebSocket conectado.");
-  socket.onmessage = (event) => addAlert(JSON.parse(event.data));
+  socket.onmessage = (event) => {
+      const alertData = JSON.parse(event.data);
+      updateSensorCard(alertData);
+      addAlertToList(alertData);
+  };
   socket.onclose = () => { console.log("WebSocket desconectado."); socket = null; };
   socket.onerror = (error) => { console.error("Error en WebSocket:", error); socket = null; };
 }
@@ -47,10 +54,10 @@ const alertsList = document.getElementById('alertsList');
 
 const ROLE_PERMISSIONS = {
   admin: { description: "Administrador: acceso completo.", buttons: true, show_alerts: true },
-  operador: { description: "Operador: puede procesar eventos.", buttons: true, show_alerts: false },
-  viewer: { description: "Usuario viewer: solo lectura.", buttons: false, show_alerts: false },
+  observador: { description: "Observador: puede simular eventos.", buttons: true, show_alerts: false },
   invitado: { description: "Invitado: solo lectura.", buttons: false, show_alerts: false },
-  observador: { description: "Observador: puede simular eventos.", buttons: true, show_alerts: true }
+  operador: { description: "Operador: puede procesar eventos.", buttons: true, show_alerts: false },
+  viewer: { description: "Usuario viewer: solo lectura.", buttons: false, show_alerts: false }
 };
 
 function showLoggedIn() {
@@ -77,9 +84,7 @@ function showLoggedOut() {
 
 function updateUIByRole(role) {
   const perms = ROLE_PERMISSIONS[role.toLowerCase()] || ROLE_PERMISSIONS['viewer'];
-
   actionButtons.forEach(btn => btn.hidden = !perms.buttons);
-
   if (alertsCard) {
     alertsCard.style.display = perms.show_alerts ? 'flex' : 'none';
   }
@@ -112,13 +117,26 @@ btnLogout.addEventListener('click', () => {
   showLoggedOut();
 });
 
-btnGuest.addEventListener('click', () => {
-    // Se asigna el rol 'observador' para que tenga los permisos correctos
-    saveToken('guest-token', { username: 'Observador', rol: 'observador' });
-    showLoggedIn();
+btnGuest.addEventListener('click', async () => {
+    try {
+        const resp = await fetch(TOKEN_ENDPOINT, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ guest: true })
+        });
+        if (!resp.ok) {
+            throw new Error("No se pudo iniciar sesión como invitado.");
+        }
+        const data = await resp.json();
+        saveToken(data.access_token, data.user);
+        showLoggedIn();
+    } catch (err) {
+        alert(err.message);
+    }
 });
 
 async function simulate(sensorType, payload) {
+    console.log(` -> Dentro de la función simulate() para ${sensorType}...`);
     const token = getToken();
     try {
         const resp = await fetch(`${SIMULATE_ENDPOINT}/${sensorType}`, {
@@ -127,17 +145,19 @@ async function simulate(sensorType, payload) {
             body: JSON.stringify(payload)
         });
         if (!resp.ok) {
-            const err = await resp.json();
-            throw new Error(err.detail || 'Error en la simulación');
+            const errText = await resp.text();
+            throw new Error(errText || 'Error en la simulación');
         }
-        alert(`Simulación de ${sensorType} enviada correctamente.`);
     } catch (err) {
+        console.error("Error en la simulación:", err);
         alert(err.message);
     }
 }
 
-function addAlert(alertData) {
-    if (!alertsList) return;
+function addAlertToList(alertData) {
+    const user = getUser();
+    const perms = ROLE_PERMISSIONS[user.rol.toLowerCase()] || ROLE_PERMISSIONS['viewer'];
+    if (!perms.show_alerts || !alertsList) return;
 
     const displayTimestamp = alertData.timestamp.includes("T")
       ? new Date(alertData.timestamp).toLocaleTimeString()
@@ -150,11 +170,13 @@ function addAlert(alertData) {
     if (alertsList.children.length > 20) {
         alertsList.removeChild(alertsList.lastChild);
     }
-
-    updateSensorCard(alertData, displayTimestamp);
 }
 
-function updateSensorCard(data, timestamp) {
+function updateSensorCard(data) {
+    const timestamp = data.timestamp.includes("T")
+      ? new Date(data.timestamp).toLocaleTimeString()
+      : data.timestamp;
+
     let valueEl, metaEl;
     switch(data.sensor_type) {
         case 'motion':
@@ -165,7 +187,7 @@ function updateSensorCard(data, timestamp) {
         case 'temperature':
             valueEl = document.getElementById('tempValue');
             metaEl = document.getElementById('tempMeta');
-            const tempMatch = data.message.match(/(\d+)°C/);
+            const tempMatch = data.message.match(/(\d+)/);
             if (tempMatch) valueEl.textContent = `${tempMatch[1]} °C`;
             break;
         case 'access':
@@ -183,7 +205,6 @@ async function loadInitialAlerts() {
     const token = getToken();
     const user = getUser();
     const perms = ROLE_PERMISSIONS[user.rol.toLowerCase()] || ROLE_PERMISSIONS['viewer'];
-
     if (!perms.show_alerts) return;
 
     try {
@@ -194,18 +215,35 @@ async function loadInitialAlerts() {
 
         const incidents = await resp.json();
         alertsList.innerHTML = '';
-        incidents.forEach(addAlert);
+        incidents.forEach(incident => {
+            addAlertToList(incident);
+        });
+        if (incidents.length > 0) {
+            updateSensorCard(incidents[0]);
+        }
+
     } catch (err) {
         console.error("Error al cargar incidencias iniciales:", err);
     }
 }
 
+// <<-- PRUEBA DE DIAGNÓSTICO AQUÍ -->>
+document.getElementById('btnSimMotion').addEventListener('click', () => {
+    console.log("Botón 'Simular movimiento' pulsado.");
+    simulate('motion', { is_authorized: false, zone: 'Laboratorio 3' });
+});
+document.getElementById('btnSimTemp').addEventListener('click', () => {
+    console.log("Botón 'Simular temperatura' pulsado.");
+    simulate('temperature', { temperature: Math.floor(Math.random() * 31) + 30 });
+});
+document.getElementById('btnSimAccess').addEventListener('click', () => {
+    console.log("Botón 'Simular acceso' pulsado.");
+    simulate('access', { access_granted: false, user: 'Dr. Doom' });
+});
 
-document.getElementById('btnSimMotion').addEventListener('click', () => simulate('motion', { is_authorized: false, zone: 'Laboratorio 3' }));
-document.getElementById('btnSimTemp').addEventListener('click', () => simulate('temperature', { temperature: Math.floor(Math.random() * 31) + 30 }));
-document.getElementById('btnSimAccess').addEventListener('click', () => simulate('access', { access_granted: false, user: 'Dr. Doom' }));
 
 document.addEventListener('DOMContentLoaded', () => {
+  console.log("El DOM se ha cargado completamente. Listeners de botones deberían estar activos.");
   if (getToken()) {
     showLoggedIn();
   } else {
