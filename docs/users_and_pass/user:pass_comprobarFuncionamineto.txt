@@ -1,0 +1,7 @@
+correo = 'admin1@stark.com'
+password = 'AdminPass123'
+correo  = 'admin2@stark.com'
+password = 'AdminPass456'
+
+correo = 'observador@stark.com'
+pasword = '123456'

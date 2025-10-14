@@ -1,0 +1,47 @@
+@startuml
+!theme vibrant
+
+title Diagrama de Secuencia - Autenticación de Usuario
+
+actor Usuario
+participant "Frontend (app.js)" as Frontend
+participant "Backend API (/token)" as Backend
+participant "Database" as DB
+
+autonumber "<b>[0]"
+
+Usuario -> Frontend: Ingresa correo y contraseña
+Usuario -> Frontend: Clic en "Entrar"
+Frontend -> Backend: POST /token (con 'username' y 'password')
+
+activate Backend
+Backend -> DB: SELECT Empleado WHERE correo = 'admin1@stark.com'
+activate DB
+DB --> Backend: Retorna datos del empleado (incl. hash de contraseña)
+deactivate DB
+
+Backend -> Backend: verificar_password(plain_password, hashed_password)
+
+alt Contraseña Correcta
+    Backend -> DB: SELECT Rol WHERE empleado_id = empleado.id
+    activate DB
+    DB --> Backend: Retorna rol ('admin')
+    deactivate DB
+
+    Backend -> Backend: create_access_token(user_info)
+    Backend --> Frontend: 200 OK (access_token, user_info)
+
+    activate Frontend
+    Frontend -> Frontend: Guarda token y datos de usuario en localStorage
+    Frontend -> Usuario: Muestra el Dashboard de Administrador
+    deactivate Frontend
+
+else Contraseña Incorrecta
+    Backend --> Frontend: 401 Unauthorized ("Usuario o contraseña incorrectos")
+    activate Frontend
+    Frontend -> Usuario: Muestra mensaje de error
+    deactivate Frontend
+end
+
+deactivate Backend
+@enduml

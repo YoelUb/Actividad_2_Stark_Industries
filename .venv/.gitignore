@@ -1,0 +1,8 @@
+# Ignorar todos los archivos
+*
+
+# no ignorar el propio .gitignore
+!.gitignore
+
+# Ignorar archivo de configuración de entorno
+.env

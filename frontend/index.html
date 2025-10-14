@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Stark Security Dashboard</title>
+  <link rel="stylesheet" href="static/styles.css" />
+</head>
+<body>
+<header>
+  <h1>Stark Industries — Security Dashboard</h1>
+  <div id="userArea">
+    <span id="usernameLabel"></span>
+    <button id="btnLogout" class="btn secondary" hidden>Salir</button>
+  </div>
+</header>
+
+<main>
+  <section id="loginSection" class="card">
+    <h2>Acceso</h2>
+    <form id="loginForm">
+      <label>Usuario<input id="username" type="text" required /></label>
+      <label>Contraseña<input id="password" type="password" required /></label>
+      <div class="row">
+        <button type="submit" class="btn">Entrar</button>
+        <button type="button" id="btnGuest" class="btn secondary">Entrar como Invitado</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="dashboard" hidden>
+    <div class="grid">
+      <div class="card sensor-card" id="motionCard">
+        <h3>Movimiento</h3>
+        <p class="sensor-value" id="motionValue">—</p>
+        <p class="sensor-meta" id="motionMeta">Último evento: —</p>
+        <button class="btn" data-sensor="motion" id="btnSimMotion">Simular movimiento</button>
+      </div>
+
+      <div class="card sensor-card" id="tempCard">
+        <h3>Temperatura</h3>
+        <p class="sensor-value" id="tempValue">— °C</p>
+        <p class="sensor-meta" id="tempMeta">Último evento: —</p>
+        <button class="btn" data-sensor="temperature" id="btnSimTemp">Simular temperatura</button>
+      </div>
+
+      <div class="card sensor-card" id="accessCard">
+        <h3>Acceso</h3>
+        <p class="sensor-value" id="accessValue">—</p>
+        <p class="sensor-meta" id="accessMeta">Último evento: —</p>
+        <button class="btn" data-sensor="access" id="btnSimAccess">Simular acceso</button>
+      </div>
+    </div>
+
+    <div class="card alerts-card" id="alertsCard" hidden>
+        <h3>Alertas en Tiempo Real</h3>
+        <ul class="alerts-list" id="alertsList">
+        </ul>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <small>Stark Industries -----> Realizada por Yoel Urquijo Barroso.</small>
+</footer>
+
+<script src="static/app.js" type="module"></script>
+</body>
+</html>
