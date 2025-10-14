@@ -121,7 +121,6 @@ async def send_email_to_admins_async(message_text: str, session: Session):
     </html>
     """
 
-    # <<-- CORRECCIÓN AQUÍ: Pasamos la lista de strings directamente. fastapi-mail la valida internamente. -->>
     message = MessageSchema(
         subject="ALERTA CRÍTICA - Sistema de Seguridad Stark Industries",
         recipients=admin_emails,

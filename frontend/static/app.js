@@ -1,6 +1,3 @@
-// <<-- LOG PARA VERIFICAR LA CARGA DEL ARCHIVO -->>
-console.log("--- STARK INDUSTRIES APP.JS v5.2 (RACE CONDITION FIX) --- CARGADO CORRECTAMENTE ---");
-
 const API_BASE = window.location.origin;
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
 const TOKEN_ENDPOINT = `${API_BASE}/token`;
@@ -95,7 +92,6 @@ function showLoggedIn() {
   btnLogout.hidden = false;
   const user = getUser();
   usernameLabel.textContent = user.username || 'Usuario';
-  // <<-- SOLUCIÓN: Muestra los botones correctos, pero inicialmente deshabilitados -->>
   updateUIByRole(user.rol || 'viewer', false);
   connectWebSocket();
   loadInitialAlerts();

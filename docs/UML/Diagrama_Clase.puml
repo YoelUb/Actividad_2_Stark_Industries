@@ -1,0 +1,85 @@
+@startuml
+!theme vibrant
+
+title Diagrama de Clases del Backend - Stark Industries
+
+package "Database Models" {
+  class Empleado {
+    +id: int
+    +nombre: str
+    +correo: str
+    +contrasena_hash: str
+    +roles: List[EmpleadoRol]
+  }
+
+  class Rol {
+    +id: int
+    +nombre: str
+    +descripcion: str
+    +empleados: List[EmpleadoRol]
+  }
+
+  class EmpleadoRol {
+    +empleado_id: int
+    +rol_id: int
+  }
+
+  class Incidencia {
+    +id: int
+    +sensor_type: str
+    +status: str
+    +message: str
+    +timestamp: datetime
+  }
+}
+
+package "Sensor Models" {
+  interface Sensor {
+    +process_event(data: dict): dict
+  }
+
+  class MotionSensor implements Sensor
+  class TemperatureSensor implements Sensor
+  class AccessSensor implements Sensor
+
+  class SENSOR_REGISTRY {
+    -motion: MotionSensor
+    -temperature: TemperatureSensor
+    -access: AccessSensor
+    +get_sensor(sensor_type: str): Sensor
+  }
+}
+
+package "WebSockets" {
+  class ConnectionManager {
+    -active_connections: List[WebSocket]
+    +connect(websocket: WebSocket)
+    +disconnect(websocket: WebSocket)
+    +broadcast(message: str)
+  }
+}
+
+package "Application" {
+  class main {
+    +create_access_token()
+    +get_current_user()
+    +simulate_event()
+    +process_and_notify()
+    +send_email_to_admins_async()
+  }
+}
+
+
+' --- Relaciones ---
+main --> SENSOR_REGISTRY : "uses >"
+main --> ConnectionManager : "uses >"
+main --> Incidencia : "creates >"
+main ..> Empleado : "authenticates >"
+
+SENSOR_REGISTRY o-- "1" MotionSensor
+SENSOR_REGISTRY o-- "1" TemperatureSensor
+SENSOR_REGISTRY o-- "1" AccessSensor
+
+Empleado "1" -- "many" EmpleadoRol
+Rol "1" -- "many" EmpleadoRol
+@enduml
