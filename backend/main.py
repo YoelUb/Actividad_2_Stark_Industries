@@ -211,7 +211,7 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.post("/api/v1/simulate/{sensor_type}")
 async def simulate_event(sensor_type: str, request: Request, current_user: dict = Depends(get_current_user),
                          db_session: Session = Depends(get_session)):
-    if current_user["rol"] not in ["admin", "observador"]:
+    if current_user["rol"].lower() not in ["admin", "observador"]:
         raise HTTPException(status_code=403, detail="No tienes permiso para realizar esta acción")
     data = await request.json()
     sensor = sensor_registry.get_sensor(sensor_type)
