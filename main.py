@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
 
-
+# Importaciones para el envío de correos
 import emails
 from emails.template import JinjaTemplate
 
@@ -85,14 +85,28 @@ def get_admin_emails(session: Session) -> list[str]:
     all_recipients = admin_users_query + ["uaxconcurrente@gmail.com"]
     return list(set(all_recipients))
 
-# FUNCIÓN DE ENVÍO DE CORREO ACTUALIZADA
 async def send_email_to_admins_async(message_text: str, session: Session):
     admin_emails = get_admin_emails(session)
     if not admin_emails:
         logging.warning("ALERTA CRÍTICA, pero no se encontraron administradores para notificar.")
         return
 
-    # Contenido del correo en HTML
+
+    mail_server = os.getenv("MAIL_SERVER")
+    mail_port = os.getenv("MAIL_PORT", "587")
+    mail_username = os.getenv("MAIL_USERNAME")
+    mail_password = os.getenv("MAIL_PASSWORD")
+    mail_starttls = os.getenv("MAIL_STARTTLS", "True")
+
+    if not all([mail_server, mail_port, mail_username, mail_password]):
+        logging.error("ERROR CRÍTICO: Una o más variables de entorno para el correo no están configuradas.")
+        logging.error(f"MAIL_SERVER: {'OK' if mail_server else 'NO ENCONTRADO'}")
+        logging.error(f"MAIL_PORT: {'OK' if mail_port else 'NO ENCONTRADO'}")
+        logging.error(f"MAIL_USERNAME: {'OK' if mail_username else 'NO ENCONTRADO'}")
+        logging.error(f"MAIL_PASSWORD: {'OK' if mail_password else 'NO ENCONTRADO'}")
+        return
+
+
     html_body = JinjaTemplate("""
     <html>
         <body>
@@ -104,32 +118,30 @@ async def send_email_to_admins_async(message_text: str, session: Session):
     </html>
     """)
 
-    # Construcción del mensaje
     message = emails.Message(
         subject="ALERTA CRÍTICA - Sistema de Seguridad Stark Industries",
         mail_to=admin_emails,
         html=html_body.render(message=message_text)
     )
 
-    # Configuración del servidor SMTP desde las variables de entorno
     smtp_options = {
-        "host": os.getenv("MAIL_SERVER"),
-        "port": int(os.getenv("MAIL_PORT", 587)),
-        "user": os.getenv("MAIL_USERNAME"),
-        "password": os.getenv("MAIL_PASSWORD"),
-        "tls": str(os.getenv("MAIL_STARTTLS", "True")).lower() == "true"
+        "host": mail_server,
+        "port": int(mail_port),
+        "user": mail_username,
+        "password": mail_password,
+        "tls": mail_starttls.lower() == "true"
     }
 
     try:
-        # Envío del mensaje
         response = message.send(smtp=smtp_options)
-        if response.status_code in [250]: # 250 es el código SMTP para "OK"
+        if response.status_code in [250]:
              logging.info(f"Correo de alerta real enviado a: {', '.join(admin_emails)}")
         else:
              logging.error(f"Fallo al enviar el correo de alerta. Respuesta del servidor: {response}")
 
     except Exception as e:
         logging.error(f"Fallo crítico al enviar el correo de alerta: {e}")
+
 
 async def send_push_notification_async(message: str):
     logging.info(f"Simulando envío de push notification: {message}")
@@ -160,6 +172,11 @@ app.mount("/static", StaticFiles(directory=frontend_dir / "static"), name="stati
 
 @app.get("/")
 def serve_index(): return FileResponse(frontend_dir / "index.html")
+
+@app.head("/")
+def health_check():
+    """Render.com health check endpoint."""
+    return {"status": "ok"}
 
 @app.post("/token")
 async def login(request: Request, session: Session = Depends(get_session)):
