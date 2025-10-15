@@ -21,7 +21,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
 
 from fastapi_mailman import Mail, EmailMessage
-from fastapi_mailman.config import ConnectionConfig, MessageType
+from fastapi_mailman.config import ConnectionConfig
 
 from backend.db.models import Empleado, Rol, EmpleadoRol, Incidencia
 from backend.websockets_manager import manager
