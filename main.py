@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
 
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+from python_fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType # Línea de importación corregida
 
 from backend.db.models import Empleado, Rol, EmpleadoRol, Incidencia
 from backend.websockets_manager import manager
