@@ -20,7 +20,8 @@ from dotenv import load_dotenv
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
 
-from python_fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType # Línea de importación corregida
+from fastapi_mailman import Mail, EmailMessage
+from fastapi_mailman.config import ConnectionConfig, MessageType
 
 from backend.db.models import Empleado, Rol, EmpleadoRol, Incidencia
 from backend.websockets_manager import manager
@@ -120,17 +121,16 @@ async def send_email_to_admins_async(message_text: str, session: Session):
         </body>
     </html>
     """
-
-    message = MessageSchema(
+    
+    mail = Mail(conf)
+    msg = EmailMessage(
         subject="ALERTA CRÍTICA - Sistema de Seguridad Stark Industries",
-        recipients=admin_emails,
         body=html_content,
-        subtype=MessageType.html
+        to=admin_emails,
     )
 
-    fm = FastMail(conf)
     try:
-        await fm.send_message(message)
+        await mail.send_message(msg)
         logging.info(f"Correo de alerta real enviado a: {', '.join(admin_emails)}")
     except Exception as e:
         logging.error(f"Fallo al enviar el correo de alerta: {e}")
