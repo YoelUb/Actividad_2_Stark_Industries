@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+python-dotenv
+PyMySQL
+PyJWT
+fastapi-mail
+prometheus-fastapi-instrumentator
