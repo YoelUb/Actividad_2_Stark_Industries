@@ -20,8 +20,9 @@ from dotenv import load_dotenv
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
 
-from fastapi_mailman import Mail, EmailMessage
-from fastapi_mailman.config import ConnectionConfig
+
+import emails
+from emails.template import JinjaTemplate
 
 from backend.db.models import Empleado, Rol, EmpleadoRol, Incidencia
 from backend.websockets_manager import manager
@@ -43,27 +44,12 @@ if not DATABASE_URL: raise RuntimeError("No se encontró DATABASE_URL en .env")
 
 engine = create_engine(DATABASE_URL, echo=False)
 
-conf = ConnectionConfig(
-    MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
-    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
-    MAIL_FROM=os.getenv("MAIL_FROM"),
-    MAIL_PORT=int(os.getenv("MAIL_PORT", 587)),
-    MAIL_SERVER=os.getenv("MAIL_SERVER"),
-    MAIL_STARTTLS=os.getenv("MAIL_STARTTLS", "True").lower() == "true",
-    MAIL_SSL_TLS=os.getenv("MAIL_SSL_TLS", "False").lower() == "true",
-    USE_CREDENTIALS=True,
-    VALIDATE_CERTS=True
-)
-
-
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
-
 
 def get_session():
     with Session(engine) as session:
         yield session
-
 
 # --- Configuración de JWT y Seguridad ---
 SECRET_KEY = os.getenv("JWT_SECRET", "mi_super_secreto")
@@ -71,13 +57,11 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
 
-
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
@@ -90,12 +74,9 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     except jwt.PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
 
-
 def hash_password(plain_password: str): return hashlib.sha256(plain_password.encode('utf-8')).hexdigest()
 
-
 def verify_password(plain_password: str, hashed_password: str): return hash_password(plain_password) == hashed_password
-
 
 # --- Funciones de Notificación ---
 def get_admin_emails(session: Session) -> list[str]:
@@ -104,50 +85,62 @@ def get_admin_emails(session: Session) -> list[str]:
     all_recipients = admin_users_query + ["uaxconcurrente@gmail.com"]
     return list(set(all_recipients))
 
-
+# FUNCIÓN DE ENVÍO DE CORREO ACTUALIZADA
 async def send_email_to_admins_async(message_text: str, session: Session):
     admin_emails = get_admin_emails(session)
     if not admin_emails:
         logging.warning("ALERTA CRÍTICA, pero no se encontraron administradores para notificar.")
         return
 
-    html_content = f"""
+    # Contenido del correo en HTML
+    html_body = JinjaTemplate("""
     <html>
         <body>
             <h1 style="color:red;">Alerta de Seguridad Crítica</h1>
             <p>Se ha detectado un nuevo evento de seguridad en el sistema de Stark Industries:</p>
-            <p><strong>{message_text}</strong></p>
+            <p><strong>{{ message }}</strong></p>
             <p>Por favor, tome las medidas necesarias de inmediato.</p>
         </body>
     </html>
-    """
-    
-    mail = Mail(conf)
-    msg = EmailMessage(
+    """)
+
+    # Construcción del mensaje
+    message = emails.Message(
         subject="ALERTA CRÍTICA - Sistema de Seguridad Stark Industries",
-        body=html_content,
-        to=admin_emails,
+        mail_to=admin_emails,
+        html=html_body.render(message=message_text)
     )
 
-    try:
-        await mail.send_message(msg)
-        logging.info(f"Correo de alerta real enviado a: {', '.join(admin_emails)}")
-    except Exception as e:
-        logging.error(f"Fallo al enviar el correo de alerta: {e}")
+    # Configuración del servidor SMTP desde las variables de entorno
+    smtp_options = {
+        "host": os.getenv("MAIL_SERVER"),
+        "port": int(os.getenv("MAIL_PORT", 587)),
+        "user": os.getenv("MAIL_USERNAME"),
+        "password": os.getenv("MAIL_PASSWORD"),
+        "tls": str(os.getenv("MAIL_STARTTLS", "True")).lower() == "true"
+    }
 
+    try:
+        # Envío del mensaje
+        response = message.send(smtp=smtp_options)
+        if response.status_code in [250]: # 250 es el código SMTP para "OK"
+             logging.info(f"Correo de alerta real enviado a: {', '.join(admin_emails)}")
+        else:
+             logging.error(f"Fallo al enviar el correo de alerta. Respuesta del servidor: {response}")
+
+    except Exception as e:
+        logging.error(f"Fallo crítico al enviar el correo de alerta: {e}")
 
 async def send_push_notification_async(message: str):
     logging.info(f"Simulando envío de push notification: {message}")
     await asyncio.sleep(0.5)
     logging.info("Notificación push enviada.")
 
-
 def send_sms_sync(message: str):
     logging.info(f"Iniciando envío de SMS síncrono (bloqueante)...")
     time.sleep(2)
     logging.info(f"SMS síncrono enviado con mensaje: '{message}'")
     return "SMS Entregado"
-
 
 # --------------------------
 # Inicializar FastAPI
@@ -157,20 +150,16 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
                    allow_headers=["*"])
 Instrumentator().instrument(app).expose(app)
 
-
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()
-
 
 # --- Endpoints de Frontend, Autenticación y WebSocket ---
 frontend_dir = Path(__file__).parent / "frontend"
 app.mount("/static", StaticFiles(directory=frontend_dir / "static"), name="static")
 
-
 @app.get("/")
 def serve_index(): return FileResponse(frontend_dir / "index.html")
-
 
 @app.post("/token")
 async def login(request: Request, session: Session = Depends(get_session)):
@@ -191,10 +180,8 @@ async def login(request: Request, session: Session = Depends(get_session)):
     token = create_access_token(token_data)
     return {"access_token": token, "token_type": "bearer", "user": user_info}
 
-
 @app.get("/me")
 def read_current_user(current_user: dict = Depends(get_current_user)): return current_user
-
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -204,7 +191,6 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         logging.info("Cliente desconectado del WebSocket.")
-
 
 # --- Lógica de Simulación y Notificación ---
 @app.post("/api/v1/simulate/{sensor_type}")
@@ -217,7 +203,6 @@ async def simulate_event(sensor_type: str, request: Request, current_user: dict 
     if not sensor: raise HTTPException(status_code=404, detail="Tipo de sensor no encontrado")
     asyncio.create_task(process_and_notify(sensor, data, db_session, sensor_type))
     return {"message": f"Simulación del sensor '{sensor_type}' iniciada."}
-
 
 async def process_and_notify(sensor, data: dict, session: Session, sensor_type: str):
     start_time = time.time()
@@ -246,7 +231,6 @@ async def process_and_notify(sensor, data: dict, session: Session, sensor_type: 
     EVENT_LATENCY.labels(sensor_type=sensor_type).observe(latency)
     EVENTS_PROCESSED.labels(sensor_type=sensor_type, status=result["status"]).inc()
     logging.info(f"Evento procesado para sensor '{sensor_type}' con estado '{result['status']}' en {latency:.4f}s")
-
 
 @app.get("/api/v1/incidencias")
 def get_incidencias(current_user: dict = Depends(get_current_user), db_session: Session = Depends(get_session)):
