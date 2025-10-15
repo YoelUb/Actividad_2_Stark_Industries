@@ -19,7 +19,6 @@ function connectWebSocket() {
   socket = new WebSocket(`${WS_BASE}/ws`);
   socket.onopen = () => {
       console.log("WebSocket conectado.");
-      // <<-- SOLUCIÓN: Habilita los botones solo cuando la conexión está abierta -->>
       updateUIByRole(getUser().rol || 'viewer', true);
   };
   socket.onmessage = (event) => {
@@ -30,7 +29,6 @@ function connectWebSocket() {
   socket.onclose = () => {
       console.log("WebSocket desconectado. Intentando reconectar en 3 segundos...");
       socket = null;
-      // <<-- SOLUCIÓN: Deshabilita los botones si la conexión se pierde -->>
       updateUIByRole(getUser().rol || 'viewer', false);
       if (getToken()) {
           reconnectTimer = setTimeout(connectWebSocket, 3000);
@@ -102,20 +100,16 @@ function showLoggedOut() {
   dashboard.hidden = true;
   btnLogout.hidden = true;
   usernameLabel.textContent = '';
-  // Llama a updateUIByRole para deshabilitar y ocultar botones al cerrar sesión
   updateUIByRole('invitado', false);
   if (alertsCard) alertsCard.style.display = 'none';
   disconnectWebSocket();
   if (alertsList) alertsList.innerHTML = '';
 }
 
-// <<-- FUNCIÓN MODIFICADA para controlar el estado 'disabled' de los botones -->>
 function updateUIByRole(role, isConnected) {
   const perms = ROLE_PERMISSIONS[role.toLowerCase()] || ROLE_PERMISSIONS['viewer'];
   actionButtons.forEach(btn => {
-    // Muestra u oculta el botón según el permiso
     btn.hidden = !perms.buttons;
-    // Deshabilita el botón si no está oculto Y la conexión no está activa
     if (!btn.hidden) {
       btn.disabled = !isConnected;
     }
@@ -253,15 +247,21 @@ async function loadInitialAlerts() {
         incidents.forEach(incident => {
             addAlertToList(incident);
         });
-        if (incidents.length > 0) {
-            updateSensorCard(incidents[0]);
-        }
+
+        // Encuentra la última incidencia para cada tipo de sensor
+        const latestMotion = incidents.find(i => i.sensor_type === 'motion');
+        const latestTemp = incidents.find(i => i.sensor_type === 'temperature');
+        const latestAccess = incidents.find(i => i.sensor_type === 'access');
+
+        // Actualiza cada tarjeta si se encontró una incidencia para ella
+        if (latestMotion) updateSensorCard(latestMotion);
+        if (latestTemp) updateSensorCard(latestTemp);
+        if (latestAccess) updateSensorCard(latestAccess);
 
     } catch (err) {
         console.error("Error al cargar incidencias iniciales:", err);
     }
 }
-
 
 document.getElementById('btnSimMotion').addEventListener('click', () => {
     console.log("Botón 'Simular movimiento' pulsado.");
@@ -275,7 +275,6 @@ document.getElementById('btnSimAccess').addEventListener('click', () => {
     console.log("Botón 'Simular acceso' pulsado.");
     simulate('access', { access_granted: false, user: 'Dr. Doom' });
 });
-
 
 document.addEventListener('DOMContentLoaded', () => {
   console.log("El DOM se ha cargado completamente. Listeners de botones deberían estar activos.");
