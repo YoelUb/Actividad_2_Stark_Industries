@@ -164,7 +164,7 @@ def on_startup():
 
 
 # --- Endpoints de Frontend, Autenticación y WebSocket ---
-frontend_dir = Path(__file__).parent.parent / "frontend"
+frontend_dir = Path(__file__).parent / "frontend"
 app.mount("/static", StaticFiles(directory=frontend_dir / "static"), name="static")
 
 
