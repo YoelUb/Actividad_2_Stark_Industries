@@ -234,19 +234,25 @@ async function loadInitialAlerts() {
     const token = getToken();
     const user = getUser();
     const perms = ROLE_PERMISSIONS[user.rol.toLowerCase()] || ROLE_PERMISSIONS['viewer'];
-    if (!perms.show_alerts) return;
 
     try {
         const resp = await fetch(INCIDENTS_ENDPOINT, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!resp.ok) return;
+        if (!resp.ok) {
+            console.error("No se pudo cargar los datos. La API podría estar restringida.");
+            return;
+        }
 
         const incidents = await resp.json();
-        alertsList.innerHTML = '';
-        incidents.forEach(incident => {
-            addAlertToList(incident);
-        });
+
+        // Esta línea asegura que la lista de alertas solo se muestre a los admins.
+        if (perms.show_alerts) {
+            alertsList.innerHTML = '';
+            incidents.forEach(incident => {
+                addAlertToList(incident);
+            });
+        }
 
         // Encuentra la última incidencia para cada tipo de sensor
         const latestMotion = incidents.find(i => i.sensor_type === 'motion');

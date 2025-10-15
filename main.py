@@ -250,7 +250,7 @@ async def process_and_notify(sensor, data: dict, session: Session, sensor_type: 
 
 @app.get("/api/v1/incidencias")
 def get_incidencias(current_user: dict = Depends(get_current_user), db_session: Session = Depends(get_session)):
-    if current_user["rol"] not in ["admin"]:
+    if current_user["rol"] not in ["admin", "observador", "invitado"]:
         raise HTTPException(status_code=403, detail="No tienes permiso para ver las incidencias")
 
     incidencias = db_session.exec(select(Incidencia).order_by(Incidencia.timestamp.desc()).limit(20)).all()
