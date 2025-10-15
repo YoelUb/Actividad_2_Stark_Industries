@@ -4,5 +4,5 @@ sqlmodel
 python-dotenv
 psycopg2-binary
 PyJWT
-fastapi-mail>=1.2.2
+python-fastapi-mail
 prometheus-fastapi-instrumentator
