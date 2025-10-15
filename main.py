@@ -22,9 +22,9 @@ from prometheus_client import Counter, Histogram
 
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 
-from db.models import Empleado, Rol, EmpleadoRol, Incidencia
-from websockets_manager import manager
-from model.SENSOR_REGISTRY import sensor_registry
+from backend.db.models import Empleado, Rol, EmpleadoRol, Incidencia
+from backend.websockets_manager import manager
+from backend.model.SENSOR_REGISTRY import sensor_registry
 
 # --- Configuración de Logging y Métricas ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
