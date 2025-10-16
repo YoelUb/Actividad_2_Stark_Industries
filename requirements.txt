@@ -5,5 +5,5 @@ python-dotenv
 psycopg2-binary
 PyJWT
 prometheus-fastapi-instrumentator
-emails
 Jinja2
+sendgrid
