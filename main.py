@@ -20,9 +20,9 @@ from dotenv import load_dotenv
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
 
-# Importaciones para el envío de correos
-import emails
-from emails.template import JinjaTemplate
+# --- Importaciones para SendGrid ---
+import sendgrid
+from sendgrid.helpers.mail import Mail, Email, To, Content
 
 from backend.db.models import Empleado, Rol, EmpleadoRol, Incidencia
 from backend.websockets_manager import manager
@@ -91,56 +91,38 @@ async def send_email_to_admins_async(message_text: str, session: Session):
         logging.warning("ALERTA CRÍTICA, pero no se encontraron administradores para notificar.")
         return
 
-
-    mail_server = os.getenv("MAIL_SERVER")
-    mail_port = os.getenv("MAIL_PORT", "587")
-    mail_username = os.getenv("MAIL_USERNAME")
-    mail_password = os.getenv("MAIL_PASSWORD")
-    mail_starttls = os.getenv("MAIL_STARTTLS", "True")
-
-    if not all([mail_server, mail_port, mail_username, mail_password]):
-        logging.error("ERROR CRÍTICO: Una o más variables de entorno para el correo no están configuradas.")
-        logging.error(f"MAIL_SERVER: {'OK' if mail_server else 'NO ENCONTRADO'}")
-        logging.error(f"MAIL_PORT: {'OK' if mail_port else 'NO ENCONTRADO'}")
-        logging.error(f"MAIL_USERNAME: {'OK' if mail_username else 'NO ENCONTRADO'}")
-        logging.error(f"MAIL_PASSWORD: {'OK' if mail_password else 'NO ENCONTRADO'}")
-        return
-
-
-    html_body = JinjaTemplate("""
+    sg = sendgrid.SendGridAPIClient(api_key=os.environ.get('SENDGRID_API_KEY'))
+    from_email = Email(os.environ.get('MAIL_FROM'))
+    
+    # Prepara el contenido HTML del correo
+    html_content = f"""
     <html>
         <body>
             <h1 style="color:red;">Alerta de Seguridad Crítica</h1>
             <p>Se ha detectado un nuevo evento de seguridad en el sistema de Stark Industries:</p>
-            <p><strong>{{ message }}</strong></p>
+            <p><strong>{message_text}</strong></p>
             <p>Por favor, tome las medidas necesarias de inmediato.</p>
         </body>
     </html>
-    """)
+    """
+    content = Content("text/html", html_content)
+    
+    # Crea y envía un correo para cada administrador
+    for admin_email in admin_emails:
+        try:
+            to_email = To(admin_email)
+            subject = "ALERTA CRÍTICA - Sistema de Seguridad Stark Industries"
+            mail = Mail(from_email, to_email, subject, content)
+            
+            response = sg.client.mail.send.post(request_body=mail.get())
+            
+            if response.status_code == 202:
+                logging.info(f"Correo de alerta enviado a {admin_email} a través de SendGrid.")
+            else:
+                logging.error(f"Fallo al enviar correo a {admin_email}. Código: {response.status_code}. Cuerpo: {response.body}")
 
-    message = emails.Message(
-        subject="ALERTA CRÍTICA - Sistema de Seguridad Stark Industries",
-        mail_to=admin_emails,
-        html=html_body.render(message=message_text)
-    )
-
-    smtp_options = {
-        "host": mail_server,
-        "port": int(mail_port),
-        "user": mail_username,
-        "password": mail_password,
-        "tls": mail_starttls.lower() == "true"
-    }
-
-    try:
-        response = message.send(smtp=smtp_options)
-        if response.status_code in [250]:
-             logging.info(f"Correo de alerta real enviado a: {', '.join(admin_emails)}")
-        else:
-             logging.error(f"Fallo al enviar el correo de alerta. Respuesta del servidor: {response}")
-
-    except Exception as e:
-        logging.error(f"Fallo crítico al enviar el correo de alerta: {e}")
+        except Exception as e:
+            logging.error(f"Fallo crítico al enviar el correo con SendGrid a {admin_email}: {e}")
 
 
 async def send_push_notification_async(message: str):
